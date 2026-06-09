@@ -166,6 +166,41 @@ function App() {
       ctx!.restore();
     }
 
+    function drawRelationship(
+      x1: number,
+      y1: number,
+      x2: number,
+      y2: number,
+      strength: number,
+      stability: number,
+      state: string,
+    ) {
+      ctx!.save();
+
+      const alpha = Math.max(0, Math.min(1, strength / 100));
+
+      let color = "160, 210, 255";
+
+      if (state === "STABLE") {
+        color = "120, 255, 180";
+      } else if (state === "UNSTABLE") {
+        color = "255, 180, 120";
+      }
+
+      const finalAlpha = alpha * (0.3 + stability);
+
+      ctx!.strokeStyle = `rgba(${color}, ${finalAlpha})`;
+
+      ctx!.lineWidth = 2.5;
+
+      ctx!.beginPath();
+      ctx!.moveTo(x1, y1);
+      ctx!.lineTo(x2, y2);
+      ctx!.stroke();
+
+      ctx!.restore();
+    }
+
     function clearScreen() {
       ctx!.clearRect(0, 0, canvas!.width, canvas!.height);
       ctx!.fillStyle = "rgb(20, 15, 30)";
@@ -212,6 +247,31 @@ function App() {
       selectGlowRef.current += (targetSelect - selectGlowRef.current) * SMOOTH;
 
       clearScreen();
+
+      const activeObserverId = selectedRef.current ?? hoveredRef.current;
+
+      if (activeObserverId !== null) {
+        for (const rel of sim.relationships.values()) {
+          if (rel.aId === activeObserverId || rel.bId === activeObserverId) {
+            const a = sim.orbs.find((o) => o.id === rel.aId);
+            const b = sim.orbs.find((o) => o.id === rel.bId);
+
+            if (!a || !b) continue;
+
+            if (rel.bondStrength <= 0) continue;
+
+            drawRelationship(
+              a.x,
+              a.y,
+              b.x,
+              b.y,
+              rel.bondStrength,
+              rel.stability,
+              rel.state,
+            );
+          }
+        }
+      }
 
       for (const orb of sim.orbs) {
         const isHovered = hoveredRef.current === orb.id;
