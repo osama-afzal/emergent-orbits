@@ -8,15 +8,15 @@ function App() {
   const [selectedOrbId, setSelectedOrbId] = useState<number | null>(null);
 
   const simRef = useRef<Simulation | null>(null);
-
   const [, setTick] = useState(0);
 
-  const mouseRef = useRef({ x: 0, y: 0 });
+  const mouseRef = useRef({ x: -1000, y: -1000 });
 
   const hoveredRef = useRef<number | null>(null);
   const selectedRef = useRef<number | null>(null);
 
   const hoverFadeRef = useRef(0);
+  const currentFrameRef = useRef(0);
 
   const hoverGlowRef = useRef(0);
   const selectGlowRef = useRef(0);
@@ -36,8 +36,12 @@ function App() {
     resize();
     window.addEventListener("resize", resize);
 
-    const sim = new Simulation(canvas.width, canvas.height, 100);
-    simRef.current = sim;
+    if (!simRef.current) {
+      const sim = new Simulation(canvas.width, canvas.height, 60);
+      simRef.current = sim;
+    }
+
+    const sim = simRef.current;
 
     const FIXED_TIMESTEP = 1000 / 60;
     let lastTime = performance.now();
@@ -75,7 +79,6 @@ function App() {
       const mouseY = event.clientY - rect.top;
 
       let selected: number | null = null;
-
       for (const orb of sim.orbs) {
         const dx = mouseX - orb.x;
         const dy = mouseY - orb.y;
@@ -87,6 +90,7 @@ function App() {
         }
       }
 
+      sim.selectOrb(selected);
       setSelectedOrbId(selected);
       selectedRef.current = selected;
     }
@@ -101,12 +105,28 @@ function App() {
       orbId: number,
       glow: number,
     ) {
-      const r = radius * 4;
+      const sim = simRef.current;
+      if (!sim) return;
+      const orb = sim.orbs.find((o) => o.id === orbId);
+      if (!orb) return;
 
+      const alpha = orb.vitality / 100;
+
+      if (alpha <= 0) {
+        ctx!.fillStyle = "rgba(55, 58, 62, 0.15)";
+        ctx!.beginPath();
+        ctx!.arc(x, y, radius, 0, Math.PI * 2);
+        ctx!.fill();
+        return;
+      }
+
+      ctx!.save();
+
+      const r = radius * 4;
       const base = ctx!.createRadialGradient(x, y, 0, x, y, r);
-      base.addColorStop(0, "rgba(200, 230, 255, 1)");
-      base.addColorStop(0.2, "rgba(140, 200, 255, 0.6)");
-      base.addColorStop(1, "rgba(140, 200, 255, 0)");
+      base.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+      base.addColorStop(0.2, `rgba(160, 210, 255, ${alpha * 0.5})`);
+      base.addColorStop(1, "rgba(0, 0, 0, 0)");
 
       ctx!.fillStyle = base;
       ctx!.beginPath();
@@ -115,20 +135,18 @@ function App() {
 
       if (glow > 0.01) {
         const gR = r * 1.25;
-
-        const intensity = glow;
-
         const g = ctx!.createRadialGradient(x, y, 0, x, y, gR);
-
-        g.addColorStop(0, `rgba(180, 220, 255, ${0.45 * intensity})`);
-        g.addColorStop(0.35, `rgba(150, 200, 255, ${0.15 * intensity})`);
-        g.addColorStop(1, "rgba(140, 200, 255, 0)");
+        g.addColorStop(0, `rgba(180, 220, 255, ${0.45 * glow * alpha})`);
+        g.addColorStop(0.35, `rgba(140, 200, 255, ${0.15 * glow * alpha})`);
+        g.addColorStop(1, "rgba(0, 0, 0, 0)");
 
         ctx!.fillStyle = g;
         ctx!.beginPath();
         ctx!.arc(x, y, gR, 0, Math.PI * 2);
         ctx!.fill();
       }
+
+      ctx!.restore();
     }
 
     function drawConnection(
@@ -138,12 +156,20 @@ function App() {
       y2: number,
       alpha: number,
     ) {
+      ctx!.save();
       ctx!.beginPath();
       ctx!.moveTo(x1, y1);
       ctx!.lineTo(x2, y2);
-      ctx!.strokeStyle = `rgba(160,210,255,${alpha})`;
+      ctx!.strokeStyle = `rgba(160, 210, 255, ${alpha * 0.4})`;
       ctx!.lineWidth = 1;
       ctx!.stroke();
+      ctx!.restore();
+    }
+
+    function clearScreen() {
+      ctx!.clearRect(0, 0, canvas!.width, canvas!.height);
+      ctx!.fillStyle = "rgb(20, 15, 30)";
+      ctx!.fillRect(0, 0, canvas!.width, canvas!.height);
     }
 
     function animate(now: number) {
@@ -168,15 +194,10 @@ function App() {
         hoverFadeRef.current = 1;
       } else {
         hoverFadeRef.current *= 0.85;
-
         if (hoverFadeRef.current < 0.05) {
           hoveredRef.current = null;
           hoverFadeRef.current = 0;
         }
-      }
-
-      if (hoveredRef.current !== hoveredOrbId) {
-        setHoveredOrbId(hoveredRef.current);
       }
 
       const isHovering = hoveredRef.current !== null;
@@ -190,9 +211,7 @@ function App() {
       hoverGlowRef.current += (targetHover - hoverGlowRef.current) * SMOOTH;
       selectGlowRef.current += (targetSelect - selectGlowRef.current) * SMOOTH;
 
-      ctx!.clearRect(0, 0, canvas!.width, canvas!.height);
-      ctx!.fillStyle = "rgb(20, 15, 30)";
-      ctx!.fillRect(0, 0, canvas!.width, canvas!.height);
+      clearScreen();
 
       for (const orb of sim.orbs) {
         const isHovered = hoveredRef.current === orb.id;
@@ -205,36 +224,29 @@ function App() {
         drawOrb(orb.x, orb.y, orb.radius, orb.id, glow);
       }
 
-      const activeOrbId = selectedRef.current ?? hoveredRef.current;
+      const activeIdForLines = selectedRef.current ?? hoveredRef.current;
+      const activeOrbInstance =
+        activeIdForLines !== null
+          ? sim.orbs.find((o) => o.id === activeIdForLines)
+          : null;
 
-      const activeOrb = activeOrbId
-        ? sim.orbs.find((o) => o.id === activeOrbId)
-        : null;
-
-      if (activeOrb) {
-        const neighbors = activeOrb.neighbors ?? [];
+      if (activeOrbInstance && activeOrbInstance.vitality > 0) {
+        const neighbors = activeOrbInstance.neighbors ?? [];
         const SENSE_RADIUS = 120;
 
-        const closest = [...neighbors]
-          .sort((a, b) => a.distance - b.distance)
-          .slice(0, 5);
-
-        for (const n of closest) {
+        for (const n of neighbors) {
           const target = sim.orbs.find((o) => o.id === n.id);
-          if (!target) continue;
+          if (!target || target.vitality <= 0) continue;
 
           const baseAlpha = 1 - n.distance / SENSE_RADIUS;
 
-          const isHover = hoveredRef.current === activeOrb.id;
-          const isSelected = selectedRef.current === activeOrb.id;
-
-          let alpha = baseAlpha;
-
-          if (isHover && !isSelected) {
-            alpha *= hoverFadeRef.current;
-          }
-
-          drawConnection(activeOrb.x, activeOrb.y, target.x, target.y, alpha);
+          drawConnection(
+            activeOrbInstance.x,
+            activeOrbInstance.y,
+            target.x,
+            target.y,
+            baseAlpha,
+          );
         }
       }
 
@@ -252,12 +264,42 @@ function App() {
     };
   }, []);
 
-  const activeOrbId = selectedRef.current ?? hoveredRef.current;
+  const activeIdForUI = selectedRef.current ?? hoveredRef.current;
 
   const activeOrb =
-    activeOrbId !== null
-      ? simRef.current?.orbs.find((o) => o.id === activeOrbId)
+    activeIdForUI !== null
+      ? simRef.current?.orbs.find((o) => o.id === activeIdForUI)
       : null;
+
+  let profileColor = "#bfe6ff";
+  if (activeOrb?.attachmentStyle === "ANXIOUS") profileColor = "#ff7575";
+  if (activeOrb?.attachmentStyle === "AVOIDANT") profileColor = "#5cb3ff";
+  if (activeOrb?.attachmentStyle === "BLASE") profileColor = "#a3a8b0";
+
+  const getInspectorNarrative = (orb: any) => {
+    if (orb.vitality <= 0) {
+      return "INDIVIDUALITY_ERASED // RESIDUAL_TRACE_ONLY";
+    }
+
+    if (orb.isInspected && orb.surveillanceTimer > 180) {
+      return "GAZE_PRESSURE_DETECTION // SUBJECT_IS_MASKING";
+    }
+
+    switch (orb.attachmentStyle) {
+      case "ANXIOUS":
+        return orb.lonelinessIndex > 50
+          ? "ANXIOUS_COGNITIVE_PANIC // SEEKING_SIGNAL"
+          : "PROXIMITY_SECURED // LOCKED_IN_UNSTABLE_ENMESHMENT";
+      case "AVOIDANT":
+        return orb.socialBattery < 45
+          ? "PERIMETER_BREACH // EXECUTING_DEFENSIVE_FLIGHT"
+          : "SOLITARY_STASIS // CONSERVING_POTENTIAL_STATE";
+      case "BLASE":
+        return "CRITICAL_SOCIAL_OVERLOAD // COMPLIANT_NUMBNESS_MUTATION";
+      default:
+        return "INTERFACE_EQUILIBRIUM // SUSTAINABLE_VOID_DISTANCE";
+    }
+  };
 
   return (
     <>
@@ -286,8 +328,74 @@ function App() {
           <div>VX: {activeOrb.vx.toFixed(2)}</div>
           <div>VY: {activeOrb.vy.toFixed(2)}</div>
 
+          <br />
+
+          <div>
+            PROFILE:&nbsp;
+            <span style={{ color: profileColor }}>
+              {activeOrb.attachmentStyle}
+            </span>
+          </div>
+
+          <br />
+
+          <div>
+            <div>
+              VITALITY:{" "}
+              <span
+                style={{
+                  color: activeOrb.vitality < 40 ? "#ff7575" : "#bfe6ff",
+                }}
+              >
+                {activeOrb.vitality.toFixed(1)}%
+              </span>
+            </div>
+            <div>BATTERY: {activeOrb.socialBattery.toFixed(1)}%</div>
+            <div>VOID_IDX: {activeOrb.lonelinessIndex.toFixed(1)}%</div>
+          </div>
+
+          <br />
+
+          <div
+            style={{
+              marginTop: 6,
+              paddingTop: 6,
+              borderTop: "1px dashed rgba(140, 200, 255, 0.15)",
+            }}
+          >
+            <div>
+              GAZE_TIME: {(activeOrb.surveillanceTimer * 16.67).toFixed(0)} us
+            </div>
+            <div>
+              GAZE_STAT:{" "}
+              <span
+                style={{ color: activeOrb.isInspected ? "#ffb000" : "#bfe6ff" }}
+              >
+                {activeOrb.isInspected ? "CONTAMINATED" : "PASSIVE_SCAN"}
+              </span>
+            </div>
+          </div>
+
+          <br />
+
           <div style={{ marginTop: 8, opacity: 0.7 }}>
-            Neighbors: {activeOrb.neighbors?.length ?? 0}
+            NEIGHBORS: {activeOrb.neighbors?.length ?? 0}
+          </div>
+
+          <br />
+
+          <div
+            style={{
+              marginTop: 10,
+              paddingTop: 10,
+              borderTop: "1px solid rgba(140, 200, 255, 0.25)",
+              color: "#fff",
+              lineHeight: "1.4em",
+              fontStyle: "italic",
+              opacity: 0.9,
+            }}
+          >
+            {getInspectorNarrative(activeOrb)}
           </div>
         </div>
       )}
