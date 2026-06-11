@@ -154,6 +154,6 @@ The deep epistemological value of the construct rests on its complete commitment
 
 The fact that navigating this endless push-pull loop happens to preserve their systemic health is a completely un-coerced, emergent byproduct of the ecosystem. Vitality is not chased. Instead, it is earned as a structural reward for successfully balancing the spatial and emotional requirements of the grid.
 
-Furthermore, the simulation offers a rigorous computational validation of John Bowlby’s and Georg Simmel’s foundational theories. It proves that a society comprised entirely of anxious chasers and avoidant runners is mathematically unsustainable; without the secure resonance loops acting as baseline structural batteries, high-frequency breakups and spatial stranding would drive the system into immediate, terminal extinction. 
+Furthermore, the simulations makes John Bowlby’s and Georg Simmel’s foundational theories viscerally observable. It demonstrates that a society comprised entirely of anxious chasers and avoidant runners is mathematically unsustainable; without the secure resonance loops acting as baseline structural batteries, high-frequency breakups and spatial stranding would drive the system into immediate, terminal extinction. 
 
 By observing the canvas under this focused telescope layer, the user watches a synthetic society that actively teaches itself how to navigate the permanent, universal tension between the hunger for personal autonomy and the terror of absolute abandonment.
